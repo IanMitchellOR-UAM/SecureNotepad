@@ -22,7 +22,7 @@ class SecureNotepadApp:
         self.sidebar = ctk.CTkFrame(self.root, width=200)
         self.sidebar.pack(side="left", fill="y")
 
-        # Frame para botones principales (Nueva nota e Importar)
+        # Frame para botones principales
         self.top_buttons_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.top_buttons_frame.pack(fill="x", padx=5, pady=(5, 0))
 
@@ -47,7 +47,7 @@ class SecureNotepadApp:
         self.note_list_frame = ctk.CTkScrollableFrame(self.sidebar)
         self.note_list_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Frame para botones inferiores (Guardar y Tema)
+        # Frame para botones inferiores
         self.bottom_buttons_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.bottom_buttons_frame.pack(fill="x", padx=5, pady=(5, 10))
 
@@ -115,7 +115,7 @@ class SecureNotepadApp:
 
         self.current_note_context = note_name
 
-        # Crear menú contextual usando tkinter.Menu
+        # Crear menú contextual
         self.context_menu = Menu(self.root, tearoff=0, bg='#333333', fg='white',
                                  activebackground='#4a4a4a', activeforeground='white')
 
@@ -376,13 +376,11 @@ class SecureNotepadApp:
 
     def ask_password(self, prompt, is_password=True):
         dialog = ctk.CTkInputDialog(text=prompt, title="Contraseña")
-        # En CustomTkinter 5.x, el campo de entrada se accede diferente
-        if hasattr(dialog, '_entry'):  # Para algunas versiones
+        if hasattr(dialog, '_entry'):
             entry = dialog._entry
-        elif hasattr(dialog, 'entry'):  # Para otras versiones
+        elif hasattr(dialog, 'entry'):
             entry = dialog.entry
         else:
-            # Si no encontramos el entry, mostramos el diálogo sin modificar
             return dialog.get_input()
 
         if is_password:
