@@ -16,7 +16,14 @@ class SecureNotepadApp:
         self.selected_note = None
         self.password_cache = {}  # Cache de contraseñas temporales
 
+        #Cambios
+        self.failed_attempts = {}  # Para autodestruccion
+        self.inactivity_timer = None
+
         self.setup_ui()
+        self.bind_shortcuts()
+        self.reset_inactivity_timer()
+        #
 
     def setup_ui(self):
         self.sidebar = ctk.CTkFrame(self.root, width=200)
@@ -25,6 +32,13 @@ class SecureNotepadApp:
         # Frame para botones principales (Nueva nota e Importar)
         self.top_buttons_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.top_buttons_frame.pack(fill="x", padx=5, pady=(5, 0))
+
+        #Cambios
+        self.search_var = ctk.StringVar()
+        self.search_var.trace("w", lambda *args: self.filter_notes())
+        self.search_entry = ctk.CTkEntry(self.sidebar, placeholder_text="Buscar...", textvariable=self.search_var)
+        self.search_entry.pack(fill="x", padx=5, pady=(5, 0))
+        #
 
         # Botón para nueva nota
         self.add_note_button = ctk.CTkButton(
@@ -74,15 +88,91 @@ class SecureNotepadApp:
         self.text_area = ctk.CTkTextbox(self.root)
         self.text_area.pack(fill="both", expand=True, padx=5, pady=5)
 
+        #Cambios
+        self.text_area.bind("<Key>", lambda e: self.reset_inactivity_timer())
+        self.text_area.bind("<Button>", lambda e: self.reset_inactivity_timer())
+        self.root.bind("<Motion>", lambda e: self.reset_inactivity_timer())
+        #
+
         # Cargar lista de notas y establecer tema inicial
         self.load_note_list()
         self.update_theme_icon()
 
-    def load_note_list(self):
+    #Cambios
+    def bind_shortcuts(self):
+        self.root.bind("<Control-s>", lambda e: self.save_note())
+        self.root.bind("<Control-n>", lambda e: self.new_note())
+        self.root.bind("<Control-f>", lambda e: self.search_entry.focus_set())
+        self.root.bind("<Control-o>", lambda e: self.import_note())
+        self.root.bind("<Control-e>", lambda e: self.export_note())
+
+    def reset_inactivity_timer(self):
+        if self.inactivity_timer:
+            self.root.after_cancel(self.inactivity_timer)
+        self.inactivity_timer = self.root.after(60000, self.lock_note_for_inactivity)
+
+    def lock_note_for_inactivity(self):
+        if self.selected_note:
+            self.text_area.delete("1.0", "end")
+            self.selected_note = None
+            messagebox.showinfo("Inactividad", "La nota se ha bloqueado por inactividad")
+
+    def select_note(self, name):
+        if name not in self.manager.notes:
+            messagebox.showerror("Error", "La nota no existe")
+            return
+
+        try:
+            password = self.password_cache.get(name)
+            if not password:
+                password = self.ask_password(f"Contraseña para '{name}'")
+                if not password:
+                    return
+
+            content = self.manager.decrypt_note(name, password)
+            self.password_cache[name] = password
+            self.selected_note = name
+            self.text_area.delete("1.0", "end")
+            self.text_area.insert("1.0", content)
+            self.failed_attempts[name] = 0
+        except ValueError as e:
+            self.failed_attempts[name] = self.failed_attempts.get(name, 0) + 1
+            if self.failed_attempts[name] >= 3:
+                self.manager.delete_note(name)
+                self.password_cache.pop(name, None)
+                self.failed_attempts.pop(name, None)
+                self.load_note_list()
+                messagebox.showwarning("Nota eliminada", f"La nota '{name}' fue eliminada tras 3 intentos fallidos.")
+            else:
+                messagebox.showerror("Error", str(e))
+
+    def filter_notes(self):
+        filtro = self.search_var.get().lower()
+        for widget in self.note_list_frame.winfo_children():
+            widget.destroy()
+
+        for note in self.manager.notes:
+            if filtro in note.lower():
+                note_frame = ctk.CTkFrame(self.note_list_frame, corner_radius=5)
+                note_frame.pack(fill="x", padx=2, pady=2)
+
+                note_btn = ctk.CTkButton(note_frame, text=note, corner_radius=5, height=30,
+                                          fg_color="transparent",text_color=("gray", "lightgray"), hover_color=("#e0e0e0", "#3a3a3a"),
+                                          anchor="w", command=lambda n=note: self.select_note(n))
+                note_btn.pack(side="left", fill="x", expand=True, padx=0)
+
+                menu_btn = ctk.CTkButton(note_frame, text="⋯", width=30, height=30, corner_radius=5,
+                                          command=lambda n=note: self.show_context_menu(n))
+                menu_btn.pack(side="right", padx=0)
+
+    def load_note_list(self, filter=""):
         for widget in self.note_list_frame.winfo_children():
             widget.destroy()
 
         for note in self.manager.notes.keys():
+            if filter.lower() not in note.lower():
+                continue
+
             note_frame = ctk.CTkFrame(self.note_list_frame, corner_radius=5)
             note_frame.pack(fill="x", padx=2, pady=2)
 
@@ -92,6 +182,7 @@ class SecureNotepadApp:
                 corner_radius=5,
                 height=30,
                 fg_color="transparent",
+                text_color=("gray", "lightgray"),
                 hover_color=("#e0e0e0", "#3a3a3a"),
                 anchor="w",
                 command=lambda n=note: self.select_note(n)
@@ -107,6 +198,7 @@ class SecureNotepadApp:
                 command=lambda n=note: self.show_context_menu(n)
             )
             menu_btn.pack(side="right", padx=0)
+    #
 
     def show_context_menu(self, note_name):
         # Destruir el menú anterior si existe
@@ -167,28 +259,6 @@ class SecureNotepadApp:
         self.manager.create_note(name, password)
         self.password_cache[name] = password  # Guardar contraseña temporalmente
         self.load_note_list()
-
-    def select_note(self, name):
-        if name not in self.manager.notes:
-            messagebox.showerror("Error", "La nota no existe")
-            return
-
-        try:
-            password = self.password_cache.get(name)
-            if not password:
-                password = self.ask_password(f"Contraseña para '{name}'")
-                if not password:  # Si el usuario cancela el diálogo
-                    return
-
-            content = self.manager.decrypt_note(name, password)
-            self.password_cache[name] = password
-            self.selected_note = name
-            self.text_area.delete("1.0", "end")
-            self.text_area.insert("1.0", content)
-        except ValueError as e:
-            messagebox.showerror("Error", str(e))
-        except Exception as e:
-            messagebox.showerror("Error", f"Error inesperado: {str(e)}")
 
     def save_note(self):
         if not self.selected_note:
